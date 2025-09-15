@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Mini Juego - Spritesheet Online</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+body { 
+  margin: 0; 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  background: black; 
+  color: white; 
+  font-family: Arial, sans-serif;
+  touch-action: manipulation;
+  overscroll-behavior: contain;
+  user-select: none;
+}
+canvas { background: #111; margin-top: 10px; }
+#joystick {
+  position: fixed;
+  bottom: 30px;
+  left: 30px;
+  width: 120px;
+  height: 120px;
+  background: rgba(200, 200, 200, 0.2);
+  border-radius: 50%;
+  touch-action: none;
+}
+#stick {
+  position: absolute;
+  left: 35px;
+  top: 35px;
+  width: 50px;
+  height: 50px;
+  background: rgba(0, 0, 255, 0.7);
+  border-radius: 50%;
+}
+</style>
+</head>
+<body>
+
+<h2>🎮 Mini Juego con Sprite Online</h2>
+<canvas id="gameCanvas" width="500" height="500"></canvas>
+<div id="joystick">
+  <div id="stick"></div>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// Jugador
+const jugador = { x: 200, y: 200, size: 50, velocidad: 180 };
+
+// Sprite online de ejemplo: persona corriendo 6 frames horizontal
+const jugadorImg = new Image();
+jugadorImg.src = "https://opengameart.org/sites/default/files/green-cap-character-run.png";
+const totalFrames = 6;
+let currentFrame = 0;
+let frameTimer = 0;
+const frameInterval = 0.1;
+
+// Obstáculos
+const obstaculos = [
+  { x: 100, y: 100, width: 100, height: 20 },
+  { x: 300, y: 250, width: 50, height: 150 },
+  { x: 150, y: 350, width: 200, height: 20 }
+];
+
+// Enemigos
+const enemigos = [
+  { x: 50, y: 50, size: 40, velocidad: 100, dirX: 1, dirY: 1 },
+  { x: 400, y: 150, size: 50, velocidad: 80, dirX: -1, dirY: 1 }
+];
+
+// Puntaje y nivel
+let puntos = 0;
+let nivel = 1;
+
+// Sonidos
+const sonidoFondo = new Audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3");
+sonidoFondo.loop = true;
+sonidoFondo.volume = 0.2;
+
+const sonidoPerder = new Audio("https://www.soundjay.com/button/beep-07.mp3");
+sonidoPerder.volume = 0.5;
+let audioIniciado = false;
+function iniciarAudio() {
+  if (!audioIniciado) {
+    sonidoFondo.play().catch(()=>{});
+    audioIniciado = true;
+  }
+}
+
+// Joystick
+const joystick = document.getElementById("joystick");
+const stick = document.getElementById("stick");
+const center = { x: 60, y: 60 };
+let dragging = false;
+let dirX = 0, dirY = 0;
+
+function moverStick(touch) {
+  const rect = joystick.getBoundingClientRect();
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+  let dx = x - center.x;
+  let dy = y - center.y;
+  const distancia = Math.sqrt(dx*dx + dy*dy);
+  if (distancia > 40) { dx = (dx / distancia) * 40; dy = (dy / distancia) * 40; }
+  stick.style.left = (center.x - 25 + dx) + "px";
+  stick.style.top = (center.y - 25 + dy) + "px";
+  dirX = dx / 40;
+  dirY = dy / 40;
+}
+
+joystick.addEventListener("touchstart", (e) => { dragging = true; moverStick(e.touches[0]); iniciarAudio(); });
+joystick.addEventListener("touchmove", (e) => { if (dragging) moverStick(e.touches[0]); });
+joystick.addEventListener("touchend", () => { dragging = false; dirX = 0; dirY = 0; stick.style.left = "35px"; stick.style.top = "35px"; });
+
+canvas.addEventListener("mousedown", iniciarAudio);
+
+// Colisión
+function colision(j, o) {
+  return !(j.x + jugador.size < o.x || j.x > o.x + o.width || j.y + jugador.size < o.y || j.y > o.y + o.height);
+}
+
+// Game loop
+let ultimoTiempo = null;
+function gameLoop(tiempoActual) {
+  if (!ultimoTiempo) ultimoTiempo = tiempoActual;
+  const deltaTime = (tiempoActual - ultimoTiempo) / 1000;
+  ultimoTiempo = tiempoActual;
+
+  // Movimiento jugador
+  const jugadorTemp = { ...jugador };
+  jugadorTemp.x += dirX * jugador.velocidad * deltaTime;
+  jugadorTemp.y += dirY * jugador.velocidad * deltaTime;
+
+  let chocó = false;
+  obstaculos.forEach(o => { if (colision(jugadorTemp, o)) chocó = true; });
+  if (!chocó) { jugador.x = jugadorTemp.x; jugador.y = jugadorTemp.y; }
+
+  // Límites
+  if (jugador.x < 0) jugador.x = 0;
+  if (jugador.x > canvas.width - jugador.size) jugador.x = canvas.width - jugador.size;
+  if (jugador.y < 0) jugador.y = 0;
+  if (jugador.y > canvas.height - jugador.size) jugador.y = canvas.height - jugador.size;
+
+  // Animación spritesheet
+  if (dirX !== 0 || dirY !== 0) {
+    frameTimer += deltaTime;
+    if (frameTimer >= frameInterval) {
+      frameTimer = 0;
+      currentFrame = (currentFrame + 1) % totalFrames;
+    }
+  } else {
+    currentFrame = 0;
+  }
+
+  // Movimiento enemigos
+  enemigos.forEach(e => {
+    e.x += e.dirX * e.velocidad * deltaTime;
+    e.y += e.dirY * e.velocidad * deltaTime;
+    if (e.x < 0 || e.x > canvas.width - e.size) e.dirX *= -1;
+    if (e.y < 0 || e.y > canvas.height - e.size) e.dirY *= -1;
+    if (colision(jugador, e)) { 
+      puntos = 0; 
+      nivel = 1; 
+      sonidoPerder.play().catch(()=>{}); 
+    }
+  });
+
+  // Puntaje y niveles
+  puntos += deltaTime * 5;
+  if (puntos >= nivel * 20) nivel++;
+
+  // Dibujar
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "red";
+  obstaculos.forEach(o => ctx.fillRect(o.x, o.y, o.width, o.height));
+
+  ctx.fillStyle = "orange";
+  enemigos.forEach(e => ctx.fillRect(e.x, e.y, e.size, e.size));
+
+  const frameWidth = jugadorImg.width / totalFrames;
+  ctx.drawImage(jugadorImg, frameWidth * currentFrame, 0, frameWidth, jugadorImg.height,
+                jugador.x, jugador.y, jugador.size, jugador.size);
+
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText("Puntos: " + Math.floor(puntos), 10, 30);
+  ctx.fillText("Nivel: " + nivel, 10, 60);
+
+  requestAnimationFrame(gameLoop);
+}
+
+jugadorImg.onload = () => { requestAnimationFrame(gameLoop); };
+</script>
+</body>
+</html>
